@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CPR Sensor Training App</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="manifest.json" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #e8f5e9; /* Light green */
+      color: #004d40;
+      padding: 20px;
+      text-align: center;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      margin: 10px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+    #connectBtn { background-color: yellow; color: black; }
+    #disconnectBtn { background-color: red; color: white; }
+    #output {
+      margin-top: 20px;
+      font-size: 16px;
+      white-space: pre-wrap;
+      text-align: left;
+      max-height: 200px;
+      overflow-y: auto;
+      background: #ffffff;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .dial-container, .bar-container {
+      margin-top: 40px;
+    }
+    .dial, .bar {
+      margin: 0 auto;
+    }
+    .dial svg, .bar svg {
+      width: 100%;
+      height: 100%;
+    }
+    .needle {
+      stroke: black;
+      stroke-width: 4;
+      transform-origin: 150px 150px;
+      transition: transform 0.5s ease-out, stroke 0.5s ease-out;
+    }
+    .rate-label, .depth-label {
+      font-size: 18px;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+<h2>🧠 CPR Training App</h2>
+<button id="connectBtn">Connect to Proteus-E</button>
+<button id="disconnectBtn">Disconnect</button>
+
+<div id="output">No data received yet.</div>
+
+<div class="bar-container">
+  <svg viewBox="0 0 300 50" aria-label="CPR Depth Indicator" role="img">
+    <rect x="10" y="20" width="280" height="10" fill="#ccc" />
+    <circle id="depthCursor" cx="10" cy="25" r="8" fill="blue" />
+  </svg>
+  <div class="depth-label" id="depthDisplay">Compression Depth: -- mm</div>
+</div>
+
+<div class="dial-container">
+  <div class="dial">
+    <svg viewBox="0 0 300 150" aria-label="CPR Rate Gauge" role="img">
+      <path d="M 30 150 A 120 120 0 0 1 270 150" fill="none" stroke="#ccc" stroke-width="10" />
+      <text x="30" y="145" font-size="12" fill="#333">0</text>
+      <text x="145" y="50" font-size="12" fill="#333">60</text>
+      <text x="260" y="145" font-size="12" fill="#333">120</text>
+      <line id="needle" x1="150" y1="150" x2="150" y2="30" class="needle" />
+    </svg>
+    <div class="rate-label" id="rateDisplay">CPR Rate: -- cpm</div>
+  </div>
+</div>
+
+<script>
+const SERVICE_UUID = '6e400001-c352-11e5-953d-0002a5d5c51b';
+const CHARACTERISTIC_UUID = '6e400003-c352-11e5-953d-0002a5d5c51b';
+
+let bluetoothDevice;
+let characteristic;
+const connectBtn = document.getElementById("connectBtn");
+const disconnectBtn = document.getElementById("disconnectBtn");
+const outputDiv = document.getElementById("output");
+const needle = document.getElementById("needle");
+const rateDisplay = document.getElementById("rateDisplay");
+const depthCursor = document.getElementById("depthCursor");
+const depthDisplay = document.getElementById("depthDisplay");
+
+let trainingData = [];
+
+function updateNeedle(rate) {
+  const maxRate = 120;
+  const limitedRate = Math.min(rate, maxRate);
+  const angle = (limitedRate / maxRate) * 180 - 90;
+  needle.style.transform = `rotate(${angle}deg)`;
+  rateDisplay.textContent = `CPR Rate: ${rate.toFixed(1)} cpm`;
+  needle.style.stroke = (rate >= 100 && rate <= 120) ? "green" : "red";
+}
+
+function updateDepth(depth) {
+  const maxDepth = 60;
+  const limitedDepth = Math.min(depth, maxDepth);
+  const pos = 10 + (limitedDepth / maxDepth) * 280;
+  depthCursor.setAttribute("cx", pos);
+  depthDisplay.textContent = `Compression Depth: ${depth.toFixed(1)} mm`;
+}
+
+connectBtn.addEventListener("click", async () => {
+  try {
+    bluetoothDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ namePrefix: "Proteus" }],
+      optionalServices: [SERVICE_UUID]
+    });
+    const server = await bluetoothDevice.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    characteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+    characteristic.addEventListener("characteristicvaluechanged", event => {
+      const value = new TextDecoder().decode(event.target.value).trim();
+      outputDiv.textContent += `\n${value}`;
+
+      const rateMatch = value.match(/CPR RATE:\s*([\d.]+)/);
+      const depthMatch = value.match(/DEPTH:\s*([\d.]+)/);
+      const timestamp = new Date().toISOString();
+
+      if (rateMatch) {
+        const rate = parseFloat(rateMatch[1]);
+        updateNeedle(rate);
+        trainingData.push({ timestamp, rate });
+      }
+
+      if (depthMatch) {
+        const depth = parseFloat(depthMatch[1]);
+        updateDepth(depth);
+        trainingData.push({ timestamp, depth });
+      }
+    });
+
+    await characteristic.startNotifications();
+    outputDiv.textContent = "✅ Connected and listening for data...\n";
+  } catch (error) {
+    alert("❌ Bluetooth Error: " + error.message);
+    outputDiv.textContent = "❌ Error: " + error.message;
+  }
+});
+
+disconnectBtn.addEventListener("click", () => {
+  if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+    bluetoothDevice.gatt.disconnect();
+    outputDiv.textContent += "\n🔌 Disconnected from Bluetooth device.";
+  }
+});
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('service-worker.js')
+    .then(() => console.log('Service Worker Registered'))
+    .catch(err => console.error('Service Worker registration failed:', err));
+}
+</script>
+</body>
+</html>
