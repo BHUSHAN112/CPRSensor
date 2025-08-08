@@ -1,13 +1,20 @@
 {
-  "name": "CPR Sensor Bluetooth Test",
-  "short_name": "CPR Sensor",
-  "start_url": ".",
+  "name": "CPR Training Assistant",
+  "short_name": "CPR Assistant",
+  "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f5f5f5",
-  "theme_color": "#4CAF50",
+  "background_color": "#ffffff",
+  "theme_color": "#00aa00",
+  "orientation": "portrait",
+  "description": "An advanced CPR training PWA with Bluetooth, compression depth and rate indicators, and trainee logging.",
   "icons": [
     {
-      "src": "icon.png",
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
       "sizes": "512x512",
       "type": "image/png"
     }
